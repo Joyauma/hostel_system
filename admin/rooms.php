@@ -184,7 +184,7 @@ ob_start();
 <?php
 $content = ob_get_clean();
 
-$pageScript = <<<SCRIPT
+$pageScript = <<<'SCRIPT'
 <script>
 let rooms = [];
 
@@ -306,21 +306,31 @@ function editRoom(id) {
 
 function updateRoom() {
     const form = document.getElementById('editRoomForm');
-    const formData = new FormData(form);
-    formData.append('action', 'update');
+    const roomData = {
+        id: form.querySelector('#editRoomId').value,
+        room_no: form.querySelector('#editRoomNo').value,
+        type: form.querySelector('#editRoomType').value,
+        capacity: parseInt(form.querySelector('#editRoomCapacity').value)
+    };
 
     fetch('../api/rooms.php', {
-        method: 'POST',
-        body: formData
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(roomData)
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            loadRooms();
-            bootstrap.Modal.getInstance(document.getElementById('editRoomModal')).hide();
-        } else {
-            alert(data.message);
+    .then(async response => {
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.message || 'Failed to update room');
         }
+        showNotification('success', data.message);
+        loadRooms();
+        bootstrap.Modal.getInstance(document.getElementById('editRoomModal')).hide();
+    })
+    .catch(error => {
+        showNotification('error', error.message);
     });
 }
 
@@ -328,23 +338,45 @@ function deleteRoom(id) {
     if (!confirm('Are you sure you want to delete this room? This action cannot be undone.')) {
         return;
     }
-
-    const formData = new FormData();
-    formData.append('action', 'delete');
-    formData.append('id', id);
-
-    fetch('../api/rooms.php', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            loadRooms();
-        } else {
-            alert(data.message);
+    
+    fetch('../api/rooms.php?id=' + id, {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json'
         }
+    })
+    .then(async response => {
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.message || 'Failed to delete room');
+        }
+        showNotification('success', data.message);
+        loadRooms();
+    })
+    .catch(error => {
+        showNotification('error', error.message);
     });
+}
+
+// Function to show notifications
+function showNotification(type, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-' + (type === 'success' ? 'success' : 'danger') + ' alert-dismissible fade show';
+    alertDiv.innerHTML = 
+        message +
+        '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>';
+    
+    // Find the first content container
+    const container = document.querySelector('.container, .container-fluid, main');
+    if (container) {
+        container.insertBefore(alertDiv, container.firstChild);
+        
+        // Auto-dismiss after 5 seconds
+        setTimeout(() => {
+            alertDiv.classList.remove('show');
+            setTimeout(() => alertDiv.remove(), 150);
+        }, 5000);
+    }
 }
 
 // Load rooms when page loads
@@ -352,5 +384,6 @@ document.addEventListener('DOMContentLoaded', loadRooms);
 </script>
 SCRIPT;
 
+// Include the template
 require_once '../includes/template.php';
 ?>
