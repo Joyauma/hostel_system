@@ -26,12 +26,11 @@ ob_start();
                 <h5 class="card-title">Fee Summary</h5>
                 <ul class="list-group list-group-flush">
                     <li class="list-group-item d-flex justify-content-between">
-                        <span>Total Due:</span>
-                        <strong id="totalDue">₹0</strong>
+                        <span>Total Due:</span>                <strong id="totalDue">Ksh 0.00</strong>
                     </li>
                     <li class="list-group-item d-flex justify-content-between">
                         <span>Paid This Month:</span>
-                        <strong id="paidThisMonth">₹0</strong>
+                        <strong id="paidThisMonth">Ksh 0.00</strong>
                     </li>
                     <li class="list-group-item d-flex justify-content-between">
                         <span>Next Due Date:</span>
@@ -94,9 +93,8 @@ function loadFeeSummary() {
             }
             return response.json();
         })
-        .then(data => {
-            document.getElementById('totalDue').textContent = '₹' + data.total_due.toLocaleString();
-            document.getElementById('paidThisMonth').textContent = '₹' + data.paid_this_month.toLocaleString();
+        .then(data => {            document.getElementById('totalDue').textContent = 'Ksh ' + data.total_due.toLocaleString();
+            document.getElementById('paidThisMonth').textContent = 'Ksh ' + data.paid_this_month.toLocaleString();
             document.getElementById('nextDueDate').textContent = data.next_due_date || '-';
         })
         .catch(error => {

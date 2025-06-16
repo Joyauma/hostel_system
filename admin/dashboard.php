@@ -187,14 +187,9 @@ document.addEventListener('DOMContentLoaded', function() {
     function handleApiError(error) {
         console.error('API Error:', error);
         return 'Error loading data';
-    }
-
-    // Function to format currency
+    }    // Function to format currency
     function formatCurrency(amount) {
-        return new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: 'USD'
-        }).format(amount);
+        return 'Ksh ' + new Intl.NumberFormat('en-KE').format(amount);
     }
 
     // Function to update dashboard stats

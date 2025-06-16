@@ -25,8 +25,7 @@ ob_start();
     <div class="col-md-3">
         <div class="card bg-primary text-white">
             <div class="card-body">
-                <h5 class="card-title">Total Fees</h5>
-                <h2 id="totalFees">₹0</h2>
+                <h5 class="card-title">Total Fees</h5>                <h2 id="totalFees">Ksh 0</h2>
             </div>
         </div>
     </div>
@@ -34,7 +33,7 @@ ob_start();
         <div class="card bg-success text-white">
             <div class="card-body">
                 <h5 class="card-title">Collected Fees</h5>
-                <h2 id="collectedFees">₹0</h2>
+                <h2 id="collectedFees">Ksh 0</h2>
             </div>
         </div>
     </div>
@@ -42,7 +41,7 @@ ob_start();
         <div class="card bg-warning text-white">
             <div class="card-body">
                 <h5 class="card-title">Pending Fees</h5>
-                <h2 id="pendingFees">₹0</h2>
+                <h2 id="pendingFees">Ksh 0</h2>
             </div>
         </div>
     </div>
@@ -161,10 +160,9 @@ let students = [];
 function loadDashboard() {
     fetch('../api/fees.php?action=dashboard')
         .then(response => response.json())
-        .then(data => {
-            document.getElementById('totalFees').textContent = '₹' + data.total.toLocaleString();
-            document.getElementById('collectedFees').textContent = '₹' + data.collected.toLocaleString();
-            document.getElementById('pendingFees').textContent = '₹' + data.pending.toLocaleString();
+        .then(data => {            document.getElementById('totalFees').textContent = 'Ksh ' + data.total.toLocaleString();
+            document.getElementById('collectedFees').textContent = 'Ksh ' + data.collected.toLocaleString();
+            document.getElementById('pendingFees').textContent = 'Ksh ' + data.pending.toLocaleString();
             document.getElementById('collectionRate').textContent = 
                 data.total ? Math.round((data.collected/data.total) * 100) + '%' : '0%';
         });
@@ -194,7 +192,7 @@ function updateFeesTable() {
         '<tr>' +
             '<td>' + fee.student_name + '</td>' +
             '<td>' + (fee.room_no || '-') + '</td>' +
-            '<td>₹' + fee.amount + '</td>' +
+            '<td>Ksh ' + fee.amount.toLocaleString() + '</td>' +
             '<td>' + new Date(fee.due_date).toLocaleDateString() + '</td>' +
             '<td>' +
                 '<span class="badge bg-' + (fee.status === 'Paid' ? 'success' : 'warning') + '">' +
