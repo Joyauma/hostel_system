@@ -15,21 +15,215 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     echo json_encode(['success' => false, 'message' => 'Unauthorized']);
     exit();
 }
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['id'])) {
+    $id = intval($_GET['id']);
+    $stmt = $conn->prepare("
+        SELECT 
+            s.id,
+            s.name,
+            s.roll,
+            s.phone,
+            s.gender,
+            s.dob,
+            s.course,
+            s.year_of_study,
+            s.address,
+            s.guardian_name,
+            s.guardian_phone,
+            s.guardian_address,
+            s.status,
+            s.user_id,
+            u.email,
+            r.room_no,
+            r.type as room_type,
+            ra.allocation_date as room_assigned_date
+        FROM students s
+        LEFT JOIN users u ON s.user_id = u.id
+        LEFT JOIN room_allocations ra ON s.id = ra.student_id 
+            AND (ra.vacate_date IS NULL OR ra.vacate_date > CURRENT_DATE)
+        LEFT JOIN rooms r ON ra.room_id = r.id
+        WHERE s.id = ?
+    ");
+    $stmt->execute([$id]);
+    $student = $stmt->fetch(PDO::FETCH_ASSOC);
 
-// Get the HTTP method
-$method = $_SERVER['REQUEST_METHOD'];
-if (isset($_POST['_method'])) {
-    $method = strtoupper($_POST['_method']);
+    if ($student) {
+        // Format dates for display
+        if (!empty($student['dob'])) {
+            $student['dob'] = date('Y-m-d', strtotime($student['dob']));
+        }
+        if (!empty($student['room_assigned_date'])) {
+            $student['room_assigned_date'] = date('Y-m-d', strtotime($student['room_assigned_date']));
+        }
+        if (!empty($student['status'])) {
+            $student['status'] = ucfirst($student['status']);
+        }
+        echo json_encode(['success' => true, 'data' => $student]);
+    } else {
+        echo json_encode(['success' => false, 'message' => 'Student not found']);
+    }
+    exit;
 }
+
+
+// Handle requests based on HTTP method
+$method = $_SERVER['REQUEST_METHOD'];
+
+try {
+    switch ($method) {
+        case 'POST':
+        // Validate required fields
+        $required_fields = ['name', 'email', 'phone'];
+        $missing_fields = [];
+        
+        foreach ($required_fields as $field) {
+            if (empty($_POST[$field])) {
+                $missing_fields[] = $field;
+            }
+        }
+        //handles the missing fields
+        if (!empty($missing_fields)) {
+            throw new Exception("Missing required fields: " . implode(', ', $missing_fields));
+        }
+        break;
+            }
+ }catch (Exception $e) {
+    echo 'Error: ' . $e->getMessage();
+}
+    
+        $conn->beginTransaction();
+
+        // Check if user exists by email
+        $stmt = $conn->prepare("SELECT id FROM users WHERE email = ?");
+        $stmt->execute([trim($_POST['email'])]);
+        $existing_user = $stmt->fetch();
+
+        if ($existing_user) {
+            throw new Exception("A user with this email already exists");
+        }
+
+        // Generate username from email
+        $username = strtolower(explode('@', $_POST['email'])[0]);
+        $baseUsername = $username;
+        $counter = 1;
+
+        // Ensure unique username
+        do {
+            $stmt = $conn->prepare("SELECT id FROM users WHERE username = ?");
+            $stmt->execute([$username]);
+            $exists = $stmt->fetch();
+            if (!$exists) break;
+            $username = $baseUsername . $counter++;
+        } while (true);
+
+        // Create user with default password
+        $default_password = password_hash('student123', PASSWORD_DEFAULT);
+        $stmt = $conn->prepare("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, 'student')");
+        $stmt->execute([$username, $_POST['email'], $default_password]);
+        $userId = $conn->lastInsertId();
+
+        // Create student record
+            $stmt = $conn->prepare("
+            INSERT INTO students (
+                user_id, name, phone, dob, gender, address,
+                course, year_of_study, guardian_name,
+                guardian_phone, guardian_address, status
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?,
+                ?, ?, ?,
+                ?, ?, 'active'
+            )
+        ");
+
+        $stmt->execute([
+            $userId,
+            $_POST['name'],
+            $_POST['phone'],
+            $_POST['dob'] ?? null,
+            $_POST['gender'] ?? 'not specified',
+            $_POST['address'] ?? '',
+            $_POST['course'] ?? '',
+            $_POST['year_of_study'] ?? '',
+            $_POST['guardian_name'] ?? '',
+            $_POST['guardian_phone'] ?? '',
+            $_POST['guardian_address'] ?? ''
+        ]);
+
+        $studentId = $conn->lastInsertId();
+
+    // Handle room assignment if provided
+    if (!empty($_POST['room_id'])) {
+        // Check room availability
+        $stmt = $conn->prepare("
+            SELECT 
+                r.id,
+                r.room_no,
+                r.capacity,
+                COUNT(DISTINCT CASE 
+                    WHEN ra.vacate_date IS NULL OR ra.vacate_date > CURRENT_DATE 
+                    THEN ra.student_id 
+                END) as current_occupants
+            FROM rooms r
+            LEFT JOIN room_allocations ra ON r.id = ra.room_id
+            WHERE r.id = ?
+            GROUP BY r.id, r.room_no, r.capacity
+        ");
+        $stmt->execute([$_POST['room_id']]);
+        $room = $stmt->fetch();
+
+        if (!$room) {
+            throw new Exception("Invalid room selected");
+        }
+
+        if ((int)$room['current_occupants'] >= (int)$room['capacity']) {
+            throw new Exception(sprintf(
+                "Room %s is at full capacity (Current: %d/%d)",
+                $room['room_no'],
+                $room['current_occupants'],
+                $room['capacity']
+            ));
+        }
+
+        // If we get here, the room has capacity, so we can assign it
+        $stmt = $conn->prepare("INSERT INTO room_allocations (student_id, room_id, allocation_date) VALUES (?, ?, CURRENT_DATE)");
+        $stmt->execute([$studentId, $_POST['room_id']]);
+    }
+
+    $conn->commit();
+            echo json_encode([
+                'success' => true, 
+                'message' => 'Student added successfully',
+                'data' => [
+                    'id' => $studentId,
+                    'username' => $username
+                ]
+            ]);
 
 try {
     switch ($method) {
         case 'GET':
             // Get single student or list of students
-            if (isset($_GET['id'])) {
-                // Get single student
+            if (isset($_GET['id'])) {                // Get single student with all details
                 $stmt = $conn->prepare("
-                    SELECT s.*, u.email, r.room_no, r.id as room_id
+                    SELECT 
+                        s.id,
+                        s.name,
+                        s.roll,
+                        s.phone,
+                        s.gender,
+                        s.dob,
+                        s.course,
+                        s.year_of_study,
+                        s.address,
+                        s.guardian_name,
+                        s.guardian_phone,
+                        s.guardian_address,
+                        s.status,
+                        s.user_id,
+                        u.email,
+                        r.room_no,
+                        r.id as room_id,
+                        COALESCE(r.room_no, 'Not Assigned') as room_no
                     FROM students s 
                     LEFT JOIN users u ON s.user_id = u.id 
                     LEFT JOIN room_allocations ra ON s.id = ra.student_id AND (ra.vacate_date IS NULL OR ra.vacate_date > CURRENT_DATE)
@@ -39,6 +233,15 @@ try {
                 $stmt->execute([$_GET['id']]);
                 $student = $stmt->fetch(PDO::FETCH_ASSOC);
 
+                if ($student) {
+                    // Clean up null values
+                    foreach ($student as $key => $value) {
+                        if ($value === null) {
+                            $student[$key] = '';
+                        }
+                    }
+                }
+
                 if (!$student) {
                     http_response_code(404);
                     echo json_encode(['success' => false, 'message' => 'Student not found']);
@@ -46,15 +249,28 @@ try {
                 }
 
                 echo json_encode(['success' => true, 'data' => $student]);
-            } else {
-                // Get all students with filters
-                $query = "
-                    SELECT s.*, u.email, r.room_no 
+            } else {                // Get all students with filters
+                $query = "SELECT 
+                        s.id,
+                        s.name,
+                        s.roll,
+                        s.phone,
+                        s.gender,
+                        s.dob,
+                        s.course,
+                        s.year_of_study,
+                        s.address,
+                        s.guardian_name,
+                        s.guardian_phone,
+                        s.guardian_address,
+                        s.status,
+                        u.email,
+                        r.room_no,
+                        r.id as room_id
                     FROM students s 
                     LEFT JOIN users u ON s.user_id = u.id
                     LEFT JOIN room_allocations ra ON s.id = ra.student_id AND (ra.vacate_date IS NULL OR ra.vacate_date > CURRENT_DATE)
-                    LEFT JOIN rooms r ON ra.room_id = r.id
-                ";
+                    LEFT JOIN rooms r ON ra.room_id = r.id";
 
                 $params = [];
                 $conditions = [];
@@ -95,11 +311,13 @@ try {
             break;
 
         case 'DELETE':
+            // Parse raw input to get DELETE data
+            parse_str(file_get_contents("php://input"), $deleteData);
             if (!isset($_POST['student_id'])) {
-                http_response_code(400);
-                echo json_encode(['success' => false, 'message' => 'Student ID is required']);
-                exit();
-            }
+                 throw new Exception('Student ID is required');
+}
+
+               $studentId = $deleteData['id'];
 
             try {
                 $conn->beginTransaction();
@@ -135,13 +353,13 @@ try {
                     throw new Exception('Student not found');
                 }
 
-                $conn->commit();
+            $conn->commit();
                 echo json_encode(['success' => true, 'message' => 'Student deleted successfully']);
 
             } catch (Exception $e) {
                 $conn->rollBack();
                 http_response_code(500);
-                echo json_encode(['success' => false, 'message' => 'Error deleting student: ' . $e->getMessage()]);
+                echo json_encode(['success' => false, 'message' => 'Deletion failed'. $e->getMessage()]);
             }
             break;
 
@@ -244,37 +462,42 @@ try {
             break;
 
         case 'DELETE':
+            // Read and decode JSON or form data from raw input
+    parse_str(file_get_contents("php://input"), $deleteVars);
             if (!isset($_POST['id'])) {
                 throw new Exception('Student ID is required');
             }
 
+             $studentId = $deleteVars['id'];
             $conn->beginTransaction();
 
             try {
-                // Get user_id first
-                $stmt = $conn->prepare("SELECT user_id FROM students WHERE id = ?");
-                $stmt->execute([$_POST['id']]);
-                $student = $stmt->fetch(PDO::FETCH_ASSOC);
+               // Get user_id
+        $stmt = $conn->prepare("SELECT user_id FROM students WHERE id = ?");
+        $stmt->execute([$studentId]);
+        $student = $stmt->fetch(PDO::FETCH_ASSOC);
 
                 if (!$student) {
                     throw new Exception('Student not found');
                 }
 
-                // Delete student record
-                $stmt = $conn->prepare("DELETE FROM students WHERE id = ?");
-                $stmt->execute([$_POST['id']]);
+                // Delete student
+        $stmt = $conn->prepare("DELETE FROM students WHERE id = ?");
+        $stmt->execute([$studentId]);
 
-                // Delete user account
-                $stmt = $conn->prepare("DELETE FROM users WHERE id = ?");
-                $stmt->execute([$student['user_id']]);
+        // Delete user
+        $stmt = $conn->prepare("DELETE FROM users WHERE id = ?");
+        $stmt->execute([$student['user_id']]);
 
-                $conn->commit();
-                echo json_encode(['success' => true, 'message' => 'Student deleted successfully']);
-            } catch (Exception $e) {
-                $conn->rollBack();
-                throw $e;
-            }
-            break;
+        $conn->commit();
+
+        echo json_encode(['success' => true, 'message' => 'Student deleted']);
+    } catch (Exception $e) {
+        $conn->rollBack();
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+    break;
+            
 
         case 'POST':
             try {

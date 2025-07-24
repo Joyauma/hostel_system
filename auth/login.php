@@ -53,4 +53,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect_with_error("A system error occurred. Please try again later.", '../index.php');
     }
 }
+
+ // For testing purposes, remove in production
 ?>
